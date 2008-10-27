@@ -216,8 +216,6 @@ wire page_hit = bank_open & (openrows[bank_address] == row_address);
 
 reg sdram_adr_loadrow;
 reg sdram_adr_loadcol;
-reg sdram_adr_loadnextrow;
-reg sdram_adr_loadnextcol;
 reg sdram_adr_loadA10;
 assign sdram_adr =
 	 ({13{sdram_adr_loadrow}}	& row_address)
