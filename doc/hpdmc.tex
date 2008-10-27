@@ -1,0 +1,100 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{fullpage}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[normalem]{ulem}
+\usepackage[english]{babel}
+\usepackage{listings,babel}
+\lstset{breaklines=true,basicstyle=\ttfamily}
+\usepackage{graphicx}
+\usepackage{moreverb}
+\usepackage{url}
+
+\title{High Performance Dynamic Memory Controller}
+\author{S\'ebastien Bourdeauducq}
+\date{\today}
+\begin{document}
+\maketitle{}
+\section{Specifications}
+
+\section{Architecture}
+
+\subsection{Configuration block}
+
+\subsubsection{System register, offset 0x00}
+\begin{tabular}{|p{1.5cm}|l|l|p{10cm}|}
+\hline
+\bf Bits & \bf Access & \bf Default & \bf Description \\
+\hline
+0 & RW & 1 & Bypass mode enable. Setting this bit transfers control of the SDRAM command and address bus from the core scheduler to the system CPU. This bit should be set during the SDRAM initialization sequence and cleared during normal memory access. \\
+\hline
+1 & RW & 1 & Scheduler and I/O manager reset. This bit should be cleared during normal operation and set while reconfiguring the memory subsystem. \\
+\hline
+2 & RW & 0 & CKE control. This bit directly drives the CKE pin of the SDRAM and should be always set except during the first stage of the initialization sequence. The core does not support power-down modes, so clearing this bit during normal operation results in undefined behaviour. \\
+\hline
+31 -- 3 & --- & 0 & Reserved. \\
+\hline
+\end{tabular}
+
+\subsubsection{Bypass register, offset 0x04}
+The bypass register gives the system CPU low-level access to the SDRAM. It must be used at system power-up to initialize the SDRAM, as the controller does not provide this initialization. Such software initialization of the SDRAM provides greater flexibility and saves valuable hardware resources.
+
+Writing once to this register issues \textbf{one} transaction to the SDRAM command bus, ie. the values written to the CS, WE, RAS and CAS bits are only taken into account for one clock cycle, and then the signals go back to their default inactive state.
+
+The values written to this register have an effect on the SDRAM only if the controller is put in bypass mode using the system register.\\
+
+\begin{tabular}{|p{1.5cm}|l|l|p{10cm}|}
+\hline
+\bf Bits & \bf Access & \bf Default & \bf Description \\
+\hline
+0 & W & 0 & CS control. Setting this bit activates the CS line of the SDRAM during the command transaction that results from writing to the bypass register. As the SDRAM control bus is active low, setting this bit actually puts a '0' logic level to the CS line. \\
+\hline
+1 & W & 0 & WE control (same as above). \\
+\hline
+2 & W & 0 & CAS control (same as above). \\
+\hline
+3 & W & 0 & RAS control (same as above). \\
+\hline
+16 -- 4 & RW & 0 & Address. Defines the current state of the address pins. \\
+\hline
+18 -- 17 & RW & 0 & Bank address. Defines the current state of the bank address pins. \\
+\hline
+31 -- 19 & --- & 0 & Reserved. \\
+\hline
+\end{tabular}\\
+
+\textit{NB. When this register is written, the address pins change synchronously at the same time as the command pins, so there is no need to pre-position the address bits before issuing a command. Commands like loading the mode register can therefore be performed with a single write to this register.}
+
+\subsubsection{Timing register, offset 0x08}
+This register allows the CPU to tune the behaviour of the scheduler so that it meets SDRAM timing requirements while avoiding unnecessary wait cycles.
+
+The scheduler must be held in reset using the system register when the timing register is modified.\\
+
+\begin{tabular}{|p{1.5cm}|l|l|p{10cm}|}
+\hline
+\bf Bits & \bf Access & \bf Default & \bf Description \\
+\hline
+2 -- 0 & RW & 2 & Number of clock cycles the scheduler must wait following a Precharge command. Usually referred to as $t_{RP}$ in SDRAM datasheets. \\
+\hline
+5 -- 3 & RW & 2 & Number of clock cycles the scheduler must wait following an Activate command. Usually referred to as $t_{RCD}$ in SDRAM datasheets. \\
+\hline
+6 & RW & 0 & CAS latency : 0 = CL 2 / CL 2.5 (autodetected), 1 = CL 3 \\
+\hline
+17 -- 7 & RW & 740 & Autorefresh period, in clock cycles. This is the time between \textbf{each} Auto Refresh command that is issued to the SDRAM, not the delay between two consecutive refreshes of a particular row. Usually referred to as $t_{REFI}$ in SDRAM datasheets, which is often  7.8$\mu$s  (64ms is an improbable value for this field). \\
+\hline
+21 -- 18 & RW & 8 & Number of clock cycles the scheduler must wait following an Auto Refresh command. Usually referred to as $t_{RFC}$ in SDRAM datasheets. \\
+\hline
+31 -- 22 & --- & 0 & Reserved. \\
+\hline
+\end{tabular}\\
+
+\textit{NB. The default values are example only, and must be adapted to your particular setup.}
+
+
+\subsection{DDR I/O manager}
+
+\subsection{Scheduler}
+
+\section{Using the core}
+
+\end{document}
