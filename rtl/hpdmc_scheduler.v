@@ -454,7 +454,10 @@ always @(*) begin
 				
 				track_open[bank_address] = 1'b1;
 				reload_activate_counter = 1'b1;
-				next_state = READ;
+				if(address_we)
+					next_state = WRITE;
+				else
+					next_state = READ;
 			end
 		end
 		READ: begin

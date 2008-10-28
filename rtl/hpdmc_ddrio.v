@@ -95,19 +95,6 @@ always @(posedge rst, negedge clk2x) begin
 				wfifo_consume <= wfifo_consume + 1;
 			wfifo_outmask <= wfifomask0[wfifo_consume];
 			wfifo_out <= wfifo0[wfifo_consume];
-			if(wfifo_enable) begin
-				$display("Read from LOW Write FIFO(%d) Mask %h", wfifo_consume, wfifomask0[wfifo_consume]);
-				$display("Masks are %x %x %x %x %x %x %x %x",
-					wfifomask1[0],
-					wfifomask0[0],
-					wfifomask1[1],
-					wfifomask0[1],
-					wfifomask1[2],
-					wfifomask0[2],
-					wfifomask1[3],
-					wfifomask0[3]
-				);
- 			end
 		end else begin
 			wfifo_outmask <= wfifomask1[wfifo_consume];
 			wfifo_out <= wfifo1[wfifo_consume];

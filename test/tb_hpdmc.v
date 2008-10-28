@@ -452,6 +452,10 @@ always begin
 	//wbwrite(32'h00000000, 64'h1111222233334444);
 	
 	wbwriteburst(32'h00);
+	wbwriteburst(32'h20);
+ 	wbwriteburst(32'h40);
+ 	wbwriteburst(32'h12340);
+ 	wbwriteburst(32'h12360);
 	waitnclock(10);
 	wbreadburst(32'h00);
 	//wbreadburst(32'h00);
