@@ -179,7 +179,8 @@ hpdmc_conf conf(
 
 wire op_write;
 wire op_read;
-wire buffer_w_load;
+wire buffer_w_next;
+wire buffer_w_nextburst;
 wire buffer_r_next;
 wire buffer_r_nextburst;
 
@@ -191,7 +192,8 @@ hpdmc_ddrio ddrio(
 	.op_write(op_write),
 	.op_read(op_read),
 	
-	.buffer_w_load(buffer_w_load),
+	.buffer_w_next(buffer_w_next),
+	.buffer_w_nextburst(buffer_w_nextburst),
 	.buffer_w_mask(~wb_sel_i),
 	.buffer_w_dat(wb_dat_i),
 	
@@ -240,7 +242,8 @@ hpdmc_scheduler #(
 	.op_write(op_write),
 	.op_read(op_read),
 	
-	.buffer_w_load(buffer_w_load),
+	.buffer_w_next(buffer_w_next),
+	.buffer_w_nextburst(buffer_w_nextburst),
 	.buffer_w_mask(buffer_w_mask),
 	.buffer_w_dat(buffer_w_dat),
 	

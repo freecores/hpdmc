@@ -58,7 +58,8 @@ module hpdmc_scheduler #(
 	output op_write,
 	output op_read,
 	
-	output buffer_w_load,
+	output reg buffer_w_next,
+	output reg buffer_w_nextburst,
 	output [7:0] buffer_w_mask,
 	output [63:0] buffer_w_dat,
 	
@@ -70,6 +71,7 @@ module hpdmc_scheduler #(
 /* Fetch queue */
 
 reg wishbone_req;
+reg wishbone_we;
 reg [sdram_depth-3-1:0] wishbone_adr;
 reg prefetch_req;
 reg [sdram_depth-3-1:0] prefetch_adr;
@@ -79,7 +81,8 @@ always @(posedge sdram_rst, posedge sys_clk) begin
 		wishbone_req <= 1'b0;
 		prefetch_req <= 1'b0;
 	end else begin
-		wishbone_req <= wb_cyc_i & wb_stb_i & ~wb_we_i & ~wb_ack_o;
+		wishbone_req <= wb_cyc_i & wb_stb_i & ~wb_ack_o;
+		wishbone_we <= wb_we_i;
 		wishbone_adr <= wb_adr_i[sdram_depth-1:3];
 		prefetch_req <= wb_nextadr_valid;
 		prefetch_adr <= wb_nextadr[sdram_depth-1:3];
@@ -87,24 +90,30 @@ always @(posedge sdram_rst, posedge sys_clk) begin
 end
 
 reg next_address_valid;
+reg next_address_we;
 reg [sdram_depth-3-1:0] next_address;
 reg address_valid;
+/* if the address_we bit is set to 1, this means that the WB is waiting on write ;
+ * it is safe to send the Write command immediately as the bus will be
+ * able to supply the data.
+ */
+reg address_we;
 reg [sdram_depth-3-1:0] address;
 reg fetched_address_valid;
+reg write_valid;
 reg [sdram_depth-3-1:0] fetched_address;
 
 wire wishbone_req_valid = wishbone_req
-	& ((wishbone_adr != next_address) | ~next_address_valid)
-	& ((wishbone_adr != address) | ~address_valid)
-	& ((wishbone_adr != fetched_address) | ~fetched_address_valid);
+	& ((wishbone_adr != next_address)    | (wishbone_we != next_address_we) | ~next_address_valid)
+	& ((wishbone_adr != address)         | (wishbone_we != address_we)      | ~address_valid)
+	& ((wishbone_adr != fetched_address) | (wishbone_we != write_valid)     | ~(fetched_address_valid|write_valid));
 
 wire prefetch_req_valid = prefetch_req
-	& ((prefetch_adr != next_address) | ~next_address_valid)
-	& ((prefetch_adr != address) | ~address_valid)
+	& ((prefetch_adr != next_address)    | ~next_address_valid)
+	& ((prefetch_adr != address)         | ~address_valid)
 	& ((prefetch_adr != fetched_address) | ~fetched_address_valid);
 
 reg fq_clearfetch;
-reg fq_clear;
 reg fq_next;
 
 always @(posedge sdram_rst, posedge sys_clk) begin
@@ -112,60 +121,56 @@ always @(posedge sdram_rst, posedge sys_clk) begin
 		next_address_valid <= 1'b0;
 		address_valid <= 1'b0;
 		fetched_address_valid <= 1'b0;
+		write_valid <= 1'b0;
 	end else begin
-		if(fq_clear) begin
-			next_address_valid <= 1'b0;
-			address_valid <= 1'b0;
+		if(fq_next) begin
+			fetched_address_valid <= address_valid & ~address_we;
+			write_valid <= address_valid & address_we;
+			fetched_address <= address;
+		end else if(fq_clearfetch)
 			fetched_address_valid <= 1'b0;
+		if(fq_next) begin
+			next_address_valid <= 1'b0;
+			next_address_we <= 1'b0;
+			address_valid <= next_address_valid;
+			address_we <= next_address_we;
+			address <= next_address;
 		end else begin
-			if(fq_next) begin
-				$display("FQ Next");
-				$display("Fetched addr %x (valid %b)", address, address_valid);
-				fetched_address_valid <= address_valid;
-				fetched_address <= address;
-			end else if(fq_clearfetch)
-				fetched_address_valid <= 1'b0;
-			if(fq_next) begin
-				next_address_valid <= 1'b0;
-				address_valid <= next_address_valid;
-				address <= next_address;
-			end else begin
-				case({next_address_valid, address_valid, wishbone_req_valid, prefetch_req_valid})
-					4'b0001: begin
-						$display("********** PREFETCH in current address");
-						address_valid <= 1'b1;
-						address <= prefetch_adr;
-					end
-					4'b0010: begin
-						$display("********** WISHBONE in current address");
-						$display("Fetched addr %x (valid %b)", fetched_address, fetched_address_valid);
-						address_valid <= 1'b1;
-						address <= wishbone_adr;
-					end
-					4'b0011: begin
-						$display("********** WISHBONE+PREFETCH");
-						next_address_valid <= 1'b1;
-						next_address <= prefetch_adr;
-						address_valid <= 1'b1;
-						address <= wishbone_adr;
-					end
-					4'b0101: begin
-						$display("********** PREFETCH in next address");
-						next_address_valid <= 1'b1;
-						next_address <= prefetch_adr;
-					end
-					4'b0110: begin
-						$display("********** WISHBONE in next address");
-						next_address_valid <= 1'b1;
-						next_address <= wishbone_adr;
-					end
-					4'b0111: begin
-						$display("********** WISHBONE in next address/2");
-						next_address_valid <= 1'b1;
-						next_address <= wishbone_adr;
-					end
-				endcase
-			end
+			case({next_address_valid, address_valid, wishbone_req_valid, prefetch_req_valid})
+				4'b0001: begin
+					address_valid <= 1'b1;
+					address_we <= 1'b0;
+					address <= prefetch_adr;
+				end
+				4'b0010: begin
+					address_valid <= 1'b1;
+					address_we <= wishbone_we;
+					address <= wishbone_adr;
+				end
+				4'b0011: begin
+					next_address_valid <= 1'b1;
+					next_address_we <= 1'b0;
+					next_address <= prefetch_adr;
+					address_valid <= 1'b1;
+					address_we <= wishbone_we;
+					address <= wishbone_adr;
+				end
+				4'b0101: begin
+					next_address_valid <= 1'b1;
+					next_address_we <= 1'b0;
+					next_address <= prefetch_adr;
+				end
+				4'b0110: begin
+					next_address_valid <= 1'b1;
+					next_address_we <= wishbone_we;
+					next_address <= wishbone_adr;
+				end
+				4'b0111: begin
+					next_address_valid <= 1'b1;
+					next_address_we <= wishbone_we;
+					next_address <= wishbone_adr;
+				end
+			endcase
 		end
 	end
 end
@@ -195,10 +200,6 @@ always @(posedge sdram_rst, posedge sys_clk) begin
 	if(sdram_rst) begin
 		has_openrow = 4'h0;
 	end else begin
-		if(has_openrow != ((has_openrow | track_open) & ~track_close)) begin
-			$display("openrows: %b->%b", has_openrow, ((has_openrow | track_open) & ~track_close));
-			$display("open: %b close %b", track_open, track_close);
-		end
 		has_openrow = (has_openrow | track_open) & ~track_close;
 		
 		if(track_open[0]) openrows[0] <= row_address;
@@ -296,16 +297,51 @@ always @(posedge sys_clk) begin
 		autorefresh_counter <= autorefresh_counter - 4'd1;
 end
 
+/* Control the DDRIO block */
+
+wire start_ddrio_read = (cas_counter == 2'd1);
+reg [1:0] readburst_counter;
+wire readburst_done = (readburst_counter == 2'd0);
+always @(posedge sdram_rst, posedge sys_clk) begin
+	if(sdram_rst)
+		readburst_counter <= 2'd0;
+	else begin
+		if(start_ddrio_read)
+			readburst_counter <= 2'd3;
+		else if(~readburst_done)
+			readburst_counter <= readburst_counter - 2'd1;
+	end
+end
+assign op_read = ~readburst_done;
+
+reg start_ddrio_write;
+reg [2:0] writeburst_counter;
+wire writeburst_done = (writeburst_counter == 3'd0);
+always @(posedge sdram_rst, posedge sys_clk) begin
+	if(sdram_rst)
+		writeburst_counter <= 3'd0;
+	else begin
+		if(start_ddrio_write)
+			writeburst_counter <= 3'd4;
+		else if(~writeburst_done)
+			writeburst_counter <= writeburst_counter - 3'd1;
+	end
+end
+assign op_write = ~writeburst_done;
+
+
 /* FSM that pushes commands into the SDRAM */
 
 reg [3:0] state;
 reg [3:0] next_state;
 
 parameter IDLE			= 4'd0;
-parameter ACTIVATE_BEFORE_READ	= 4'd1;
+parameter ACTIVATE		= 4'd1;
 parameter READ			= 4'd2;
-parameter AUTOREFRESH		= 4'd3;
-parameter AUTOREFRESH_WAIT	= 4'd4;
+parameter WRITE			= 4'd3;
+parameter PRECHARGEALL		= 4'd4;
+parameter AUTOREFRESH		= 4'd5;
+parameter AUTOREFRESH_WAIT	= 4'd6;
 
 always @(posedge sdram_rst, posedge sys_clk) begin
 	if(sdram_rst)
@@ -334,38 +370,46 @@ always @(*) begin
 	sdram_adr_loadcol = 1'b0;
 	sdram_adr_loadA10 = 1'b0;
 	
-	fq_clear = 1'b0;
 	fq_next = 1'b0;
 	
 	track_close = 4'b0000;
 	track_open = 4'b0000;
+	
+	start_ddrio_write = 1'b0;
 
 	case(state)
 		IDLE: begin
-			if(must_refresh) begin
-				/* Precharge All */
-				sdram_cs = 1'b1;
-				sdram_ras = 1'b1;
-				sdram_cas = 1'b0;
-				sdram_we = 1'b1;
-				sdram_adr_loadA10 = 1'b1;
-				
-				reload_precharge_counter = 1'b1;
-				next_state = AUTOREFRESH;
-			end else begin
+			if(must_refresh)
+				next_state = PRECHARGEALL;
+			else begin
 				if(address_valid) begin
 					if(page_hit) begin
-						/* Read */
-						if(~fetched_address_valid | fq_clearfetch) begin
-							sdram_cs = 1'b1;
-							sdram_ras = 1'b0;
-							sdram_cas = 1'b1;
-							sdram_we = 1'b0;
-							sdram_adr_loadcol = 1'b1;
-							
-							reload_cas_counter = 1'b1;
-							
-							fq_next = 1'b1;
+						if(address_we) begin
+							if(readburst_done & (~write_valid | fq_clearfetch)) begin
+								/* Write */
+								sdram_cs = 1'b1;
+								sdram_ras = 1'b0;
+								sdram_cas = 1'b1;
+								sdram_we = 1'b1;
+								sdram_adr_loadcol = 1'b1;
+								
+								start_ddrio_write = 1'b1;
+								
+								fq_next = 1'b1;
+							end
+						end else begin
+							if(writeburst_done & (~fetched_address_valid | fq_clearfetch)) begin
+								/* Read */
+								sdram_cs = 1'b1;
+								sdram_ras = 1'b0;
+								sdram_cas = 1'b1;
+								sdram_we = 1'b0;
+								sdram_adr_loadcol = 1'b1;
+								
+								reload_cas_counter = 1'b1;
+								
+								fq_next = 1'b1;
+							end
 						end
 					end else begin
 						if(bank_open) begin
@@ -377,7 +421,7 @@ always @(*) begin
 							
 							track_close[bank_address] = 1'b1;
 							reload_precharge_counter = 1'b1;
-							next_state = ACTIVATE_BEFORE_READ;
+							next_state = ACTIVATE;
 						end else begin
 							/* Activate */
 							sdram_cs = 1'b1;
@@ -388,14 +432,17 @@ always @(*) begin
 				
 							track_open[bank_address] = 1'b1;
 							reload_activate_counter = 1'b1;
-							next_state = READ;
+							if(address_we)
+								next_state = WRITE;
+							else
+								next_state = READ;
 						end
 					end
 				end
 			end
 		end
 		
-		ACTIVATE_BEFORE_READ: begin
+		ACTIVATE: begin
 			if(precharge_done) begin
 				sdram_cs = 1'b1;
 				sdram_ras = 1'b1;
@@ -409,20 +456,52 @@ always @(*) begin
 			end
 		end
 		READ: begin
-			if(activate_done & (~fetched_address_valid | fq_clearfetch)) begin
-				sdram_cs = 1'b1;
-				sdram_ras = 1'b0;
-				sdram_cas = 1'b1;
-				sdram_we = 1'b0;
-				sdram_adr_loadcol = 1'b1;
-				
-				reload_cas_counter = 1'b1;
-				
-				fq_next = 1'b1;
-				next_state = IDLE;
+			if(activate_done) begin
+				if(must_refresh)
+					next_state = PRECHARGEALL;					
+				else if(writeburst_done & (~fetched_address_valid | fq_clearfetch)) begin
+					sdram_cs = 1'b1;
+					sdram_ras = 1'b0;
+					sdram_cas = 1'b1;
+					sdram_we = 1'b0;
+					sdram_adr_loadcol = 1'b1;
+					
+					reload_cas_counter = 1'b1;
+					
+					fq_next = 1'b1;
+					next_state = IDLE;
+				end
+			end
+		end
+		WRITE: begin
+			if(activate_done) begin
+				if(must_refresh)
+					next_state = PRECHARGEALL;
+				else if(readburst_done & (~write_valid | fq_clearfetch)) begin
+					sdram_cs = 1'b1;
+					sdram_ras = 1'b0;
+					sdram_cas = 1'b1;
+					sdram_we = 1'b1;
+					sdram_adr_loadcol = 1'b1;
+					
+					start_ddrio_write = 1'b1;
+					
+					fq_next = 1'b1;
+					next_state = IDLE;
+				end
 			end
 		end
 		
+		PRECHARGEALL: begin
+			sdram_cs = 1'b1;
+			sdram_ras = 1'b1;
+			sdram_cas = 1'b0;
+			sdram_we = 1'b1;
+			sdram_adr_loadA10 = 1'b1;
+					
+			reload_precharge_counter = 1'b1;
+			next_state = AUTOREFRESH;
+		end
 		AUTOREFRESH: begin
 			track_close = 4'b1111;
 			if(precharge_done) begin
@@ -443,19 +522,6 @@ always @(*) begin
 	endcase
 end
 
-/* Control the DDRIO block */
-
-wire start_ddrio_read = (cas_counter == 2'd1);
-reg [1:0] readburst_counter;
-wire readburst_done = (readburst_counter == 2'd0);
-always @(posedge sys_clk) begin
-	if(start_ddrio_read)
-		readburst_counter <= 2'd3;
-	else if(~readburst_done)
-		readburst_counter <= readburst_counter - 2'd1;
-end
-assign op_read = ~readburst_done;
-
 /* Service WISHBONE requests */
 
 reg [3:0] wstate;
@@ -465,6 +531,7 @@ parameter WIDLE 		= 4'd0;
 parameter WPROCESS_READ		= 4'd1;
 parameter WBURST_READ		= 4'd2;
 parameter WPROCESS_WRITE	= 4'd3;
+parameter WBURST_WRITE		= 4'd4;
 
 always @(posedge sdram_rst, posedge sys_clk) begin
 	if(sdram_rst)
@@ -507,9 +574,13 @@ always @(*) begin
 	fq_clearfetch = 1'b0;
 	buffer_r_next = 1'b0;
 	buffer_r_nextburst = 1'b0;
+	buffer_w_next = 1'b0;
+	buffer_w_nextburst = 1'b0;
 	
 	case(wstate)
 		WIDLE: begin
+			buffer_w_nextburst = 1'b1;
+			buffer_r_nextburst = 1'b1;
 			if(wb_cyc_i & wb_stb_i) begin
 				if(wb_we_i)
 					next_wstate = WPROCESS_WRITE;
@@ -525,12 +596,10 @@ always @(*) begin
 					wb_ack_o = 1'b1;
 					buffer_r_next = 1'b1;
 					reload_maxburst_counter = 1'b1;
-					if(burst_on) begin
+					if(burst_on)
 						next_wstate = WBURST_READ;
-					end else begin
-						buffer_r_nextburst = 1'b1;
+					else
 						next_wstate = WIDLE;
-					end
 				end
 			end
 		end
@@ -538,15 +607,27 @@ always @(*) begin
 		WBURST_READ: begin
 			wb_ack_o = 1'b1;
 			buffer_r_next = 1'b1;
-			if(~burst_on | maxburst_done) begin
-				buffer_r_nextburst = 1'b1;
+			if(~burst_on | maxburst_done)
 				next_wstate = WIDLE;
-			end
 		end
 		
 		WPROCESS_WRITE: begin
+			fq_clearfetch = 1'b1;
+			if(write_valid) begin
+				wb_ack_o = 1'b1;
+				buffer_w_next = 1'b1;
+				reload_maxburst_counter = 1'b1;
+				if(burst_on)
+					next_wstate = WBURST_WRITE;
+				else
+					next_wstate = WIDLE;
+			end
+		end
+		WBURST_WRITE: begin
 			wb_ack_o = 1'b1;
-			next_wstate = WIDLE;
+			buffer_w_next = 1'b1;
+			if(~burst_on | maxburst_done)
+				next_wstate = WIDLE;
 		end
 	endcase
 end

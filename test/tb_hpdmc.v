@@ -262,6 +262,32 @@ begin
 end
 endtask
 
+task wbwrite;
+input [31:0] address;
+input [63:0] data;
+integer i;
+begin
+	wb_adr_i = address;
+	wb_dat_i = data;
+	wb_cyc_i = 1'b1;
+	wb_stb_i = 1'b1;
+	wb_sel_i = 8'hff;
+	wb_we_i = 1'b1;
+	wb_cti_i = 3'b000;
+	i = 0;
+	#1;
+	while(~wb_ack_o) begin
+		i = i+1;
+		waitclock;
+	end
+	wb_cyc_i = 1'b0;
+	wb_stb_i = 1'b0;
+	wb_we_i = 1'b0;
+	$display("Memory Write : %x=%x acked in %d clocks", address, data, i);
+	waitclock;
+end
+endtask
+
 always begin
 	$dumpfile("hpdmc.vcd");
 
@@ -380,7 +406,7 @@ always begin
 	/*
 	 * Try some transfers.
 	 */
-	
+	/*
 	wb_nextadr = 32'h00000020;
 	wb_nextadr_valid = 1'b1;
 	wbreadburst(32'h00);
@@ -389,9 +415,11 @@ always begin
 	wb_nextadr = 32'h00000060;
 	wbreadburst(32'h40);
 	wb_nextadr_valid = 1'b0;
-	wbreadburst(32'h60);
+	wbreadburst(32'h60);*/
 	
-	waitclock;
+	wbwrite(32'h00000000, 64'h1111222233334444);
+	waitnclock(10);
+	wbreadburst(32'h00);
 	
 	$finish;
 end

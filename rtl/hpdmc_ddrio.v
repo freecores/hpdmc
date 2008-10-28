@@ -32,7 +32,8 @@ module hpdmc_ddrio(
 	input op_write,
 	input op_read,
 	
-	input buffer_w_load,
+	input buffer_w_next,
+	input buffer_w_nextburst,
 	input [7:0] buffer_w_mask,
 	input [63:0] buffer_w_dat,
 	
@@ -63,12 +64,26 @@ reg [1:0] wfifo_consume;
 always @(posedge rst, posedge clk) begin
 	if(rst)
 		wfifo_produce <= 2'b00;
-	else if(buffer_w_load) begin
-		wfifo_produce <= wfifo_produce + 1;
-		wfifomask1[wfifo_produce] <= buffer_w_mask[7:4];
-		wfifomask0[wfifo_produce] <= buffer_w_mask[3:0];
-		wfifo1[wfifo_produce] <= buffer_w_dat[63:32];
-		wfifo0[wfifo_produce] <= buffer_w_dat[31:0];
+	else begin
+		if(buffer_w_nextburst) begin
+			wfifo_produce <= 2'b00;
+			wfifomask1[0] <= 4'b1111;
+			wfifomask1[1] <= 4'b1111;
+			wfifomask1[2] <= 4'b1111;
+			wfifomask1[3] <= 4'b1111;
+			wfifomask0[0] <= 4'b1111;
+			wfifomask0[1] <= 4'b1111;
+			wfifomask0[2] <= 4'b1111;
+			wfifomask0[3] <= 4'b1111;
+		end else if(buffer_w_next)
+			wfifo_produce <= wfifo_produce + 1;
+		if(buffer_w_next) begin
+			$display("Pushing into Write FIFO Mask %h", buffer_w_mask);
+			wfifomask1[wfifo_produce] <= buffer_w_mask[7:4];
+			wfifomask0[wfifo_produce] <= buffer_w_mask[3:0];
+			wfifo1[wfifo_produce] <= buffer_w_dat[63:32];
+			wfifo0[wfifo_produce] <= buffer_w_dat[31:0];
+		end
 	end
 end
 
@@ -113,7 +128,7 @@ assign sdram_dqs = dq_drive ? {4{clk}} : 4'hz;
 
 
 /*
- * Read FIFO, 8-word deep 
+ * Read FIFO, 8-word deep
  */
 
 reg read_enable;
