@@ -127,8 +127,10 @@ always @(posedge sdram_rst, posedge sys_clk) begin
 			fetched_address_valid <= address_valid & ~address_we;
 			write_valid <= address_valid & address_we;
 			fetched_address <= address;
-		end else if(fq_clearfetch)
+		end else if(fq_clearfetch) begin
 			fetched_address_valid <= 1'b0;
+			write_valid <= 1'b0;
+		end
 		if(fq_next) begin
 			next_address_valid <= 1'b0;
 			next_address_we <= 1'b0;
@@ -579,12 +581,12 @@ always @(*) begin
 	
 	case(wstate)
 		WIDLE: begin
-			buffer_w_nextburst = 1'b1;
 			buffer_r_nextburst = 1'b1;
+			buffer_w_nextburst = 1'b1;
 			if(wb_cyc_i & wb_stb_i) begin
-				if(wb_we_i)
+				if(wb_we_i) begin
 					next_wstate = WPROCESS_WRITE;
-				else
+				end else
 					next_wstate = WPROCESS_READ;
 			end
 		end
@@ -612,8 +614,8 @@ always @(*) begin
 		end
 		
 		WPROCESS_WRITE: begin
-			fq_clearfetch = 1'b1;
 			if(write_valid) begin
+				fq_clearfetch = 1'b1;
 				wb_ack_o = 1'b1;
 				buffer_w_next = 1'b1;
 				reload_maxburst_counter = 1'b1;

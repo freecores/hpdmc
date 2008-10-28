@@ -165,12 +165,12 @@ module ddr (Clk, Clk_n, Cke, Cs_n, Ras_n, Cas_n, We_n, Ba , Addr, Dm, Dq, Dqs);
 `endif
 
 // added by lekernel: for testing reads before testing writes
-integer fillmem_i;
+/*integer fillmem_i;
 initial begin
 	for(fillmem_i=0;fillmem_i<100;fillmem_i=fillmem_i+1) begin
 		mem_array[fillmem_i] = $random;
 	end
-end
+end*/
 
     // Dqs edge checking
     integer i;

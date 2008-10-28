@@ -61,29 +61,25 @@ reg [1:0] wfifo_produce;
 reg [1:0] wfifo_consume;
 
 /* Writes to the Write FIFO */
-always @(posedge rst, posedge clk) begin
-	if(rst)
-		wfifo_produce <= 2'b00;
-	else begin
-		if(buffer_w_nextburst) begin
-			wfifo_produce <= 2'b00;
-			wfifomask1[0] <= 4'b1111;
-			wfifomask1[1] <= 4'b1111;
-			wfifomask1[2] <= 4'b1111;
-			wfifomask1[3] <= 4'b1111;
-			wfifomask0[0] <= 4'b1111;
-			wfifomask0[1] <= 4'b1111;
-			wfifomask0[2] <= 4'b1111;
-			wfifomask0[3] <= 4'b1111;
-		end else if(buffer_w_next)
-			wfifo_produce <= wfifo_produce + 1;
-		if(buffer_w_next) begin
-			$display("Pushing into Write FIFO Mask %h", buffer_w_mask);
-			wfifomask1[wfifo_produce] <= buffer_w_mask[7:4];
-			wfifomask0[wfifo_produce] <= buffer_w_mask[3:0];
-			wfifo1[wfifo_produce] <= buffer_w_dat[63:32];
-			wfifo0[wfifo_produce] <= buffer_w_dat[31:0];
-		end
+always @(posedge clk) begin
+	if(buffer_w_nextburst) begin
+		wfifomask1[0] <= buffer_w_mask[7:4];
+		wfifomask1[1] <= 4'b1111;
+		wfifomask1[2] <= 4'b1111;
+		wfifomask1[3] <= 4'b1111;
+		wfifomask0[0] <= buffer_w_mask[3:0];
+		wfifomask0[1] <= 4'b1111;
+		wfifomask0[2] <= 4'b1111;
+		wfifomask0[3] <= 4'b1111;
+		wfifo1[0] <= buffer_w_dat[63:32];
+		wfifo0[0] <= buffer_w_dat[31:0];
+		wfifo_produce <= 2'b01;
+	end else if(buffer_w_next) begin
+		wfifo_produce <= wfifo_produce + 1;
+		wfifomask1[wfifo_produce] <= buffer_w_mask[7:4];
+		wfifomask0[wfifo_produce] <= buffer_w_mask[3:0];
+		wfifo1[wfifo_produce] <= buffer_w_dat[63:32];
+		wfifo0[wfifo_produce] <= buffer_w_dat[31:0];
 	end
 end
 
@@ -99,6 +95,8 @@ always @(posedge rst, negedge clk2x) begin
 				wfifo_consume <= wfifo_consume + 1;
 			wfifo_outmask <= wfifomask0[wfifo_consume];
 			wfifo_out <= wfifo0[wfifo_consume];
+			if(wfifo_enable)
+				$display("Read from LOW Write FIFO(%d) Mask %h", wfifo_consume, wfifomask0[wfifo_consume]);
 		end else begin
 			wfifo_outmask <= wfifomask1[wfifo_consume];
 			wfifo_out <= wfifo1[wfifo_consume];

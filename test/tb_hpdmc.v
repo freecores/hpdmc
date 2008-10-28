@@ -288,6 +288,38 @@ begin
 end
 endtask
 
+task wbwriteburst;
+input [31:0] address;
+integer i;
+begin
+	wb_adr_i = address;
+	wb_cyc_i = 1'b1;
+	wb_stb_i = 1'b1;
+	wb_we_i = 1'b1;
+	wb_sel_i = 8'hff;
+	wb_dat_i = {$random, $random};
+	wb_cti_i = 3'b010;
+	i = 0;
+	#1;
+	while(~wb_ack_o) begin
+		i = i+1;
+		waitclock;
+	end
+	$display("Memory Write : %x=%x acked in %d clocks", address, wb_dat_i, i);
+	for(i=0;i<3;i=i+1) begin
+		wb_dat_i = {$random, $random};
+		waitclock;
+		$display("(burst continuing)     %x", wb_dat_i);
+	end
+	
+	wb_cti_i = 3'b000;
+	wb_cyc_i = 1'b0;
+	wb_stb_i = 1'b0;
+	wb_we_i = 1'b0;
+	waitclock;
+end
+endtask
+
 always begin
 	$dumpfile("hpdmc.vcd");
 
@@ -417,9 +449,13 @@ always begin
 	wb_nextadr_valid = 1'b0;
 	wbreadburst(32'h60);*/
 	
-	wbwrite(32'h00000000, 64'h1111222233334444);
+	//wbwrite(32'h00000000, 64'h1111222233334444);
+	
+	wbwriteburst(32'h00);
 	waitnclock(10);
 	wbreadburst(32'h00);
+	//wbreadburst(32'h00);
+	//waitnclock(10);
 	
 	$finish;
 end
