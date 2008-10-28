@@ -22,9 +22,9 @@
 `timescale 1ns / 1ps
 
 `define SINGLEWBURST
-`define MULTIWBURST
-`define SINGLERBURST
-`define MULTIRBURST
+//`define MULTIWBURST
+//`define SINGLERBURST
+//`define MULTIRBURST
 
 module tb_ddrio();
 
@@ -48,7 +48,8 @@ reg rst;
 reg op_write;
 reg op_read;
 
-reg buffer_w_load;
+reg buffer_w_next;
+reg buffer_w_nextburst;
 reg [7:0] buffer_w_mask;
 reg [63:0] buffer_w_dat;
 
@@ -56,6 +57,7 @@ reg buffer_r_next;
 reg buffer_r_nextburst;
 wire [63:0] buffer_r_dat;
 
+wire [3:0] sdram_dqm;
 wire [31:0] sdram_dq;
 wire [3:0] sdram_dqs;
 hpdmc_ddrio ddrio(
@@ -66,7 +68,8 @@ hpdmc_ddrio ddrio(
 	.op_write(op_write),
 	.op_read(op_read),
 	
-	.buffer_w_load(buffer_w_load),
+	.buffer_w_next(buffer_w_next),
+	.buffer_w_nextburst(buffer_w_nextburst),
 	.buffer_w_mask(buffer_w_mask),
 	.buffer_w_dat(buffer_w_dat),
 	
@@ -74,7 +77,7 @@ hpdmc_ddrio ddrio(
 	.buffer_r_nextburst(buffer_r_nextburst),
 	.buffer_r_dat(buffer_r_dat),
 	
-	.sdram_dqm(),
+	.sdram_dqm(sdram_dqm),
 	.sdram_dq(sdram_dq),
 	.sdram_dqs(sdram_dqs)
 );
@@ -91,11 +94,11 @@ task pushdata;
 input [63:0] data;
 begin
 	$display("Pushing %x into the Write FIFO", data);
-	buffer_w_mask = 8'hff;
+	buffer_w_mask = 8'h00;
 	buffer_w_dat = data;
-	buffer_w_load = 1'b1;
+	buffer_w_next = 1'b1;
 	waitclock;
-	buffer_w_load = 1'b0;
+	buffer_w_next = 1'b0;
 end
 endtask
 
@@ -192,7 +195,8 @@ initial begin
 	op_write = 1'b0;
 	op_read = 1'b0;
 	
-	buffer_w_load = 1'b0;
+	buffer_w_next = 1'b0;
+	buffer_w_nextburst = 1'b0;
 	buffer_w_mask = 1'b0;
 	
 	buffer_r_next = 1'b0;
@@ -209,7 +213,9 @@ initial begin
 	$display("* Testing single write burst (check VCD file) *");
 	$display("***********************************************");
 	op_write = 1'b1;
+	buffer_w_nextburst = 1'b1;
 	pushdata(64'h1111111122222222);
+	buffer_w_nextburst = 1'b0;
 	pushdata(64'h3333333344444444);
 	pushdata(64'h5555555566666666);
 	pushdata(64'h7777777788888888);
@@ -223,7 +229,9 @@ initial begin
 	$display("* Testing multiple write bursts (check VCD file) *");
 	$display("**************************************************");
 	op_write = 1'b1;
+	buffer_w_nextburst = 1'b1;
 	pushdata(64'h1111111122222222);
+	buffer_w_nextburst = 1'b0;
 	pushdata(64'h3333333344444444);
 	pushdata(64'h5555555566666666);
 	pushdata(64'h7777777788888888);

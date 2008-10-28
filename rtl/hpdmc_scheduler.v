@@ -582,7 +582,6 @@ always @(*) begin
 	case(wstate)
 		WIDLE: begin
 			buffer_r_nextburst = 1'b1;
-			buffer_w_nextburst = 1'b1;
 			if(wb_cyc_i & wb_stb_i) begin
 				if(wb_we_i) begin
 					next_wstate = WPROCESS_WRITE;
@@ -623,7 +622,8 @@ always @(*) begin
 					next_wstate = WBURST_WRITE;
 				else
 					next_wstate = WIDLE;
-			end
+			end else
+				buffer_w_nextburst = 1'b1;
 		end
 		WBURST_WRITE: begin
 			wb_ack_o = 1'b1;
